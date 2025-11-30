@@ -1,5 +1,5 @@
-import pickle
 import re
+from ..utils.characters import get_arabic_characters
 
 DIACRITICS_PATTERN = re.compile(r'[\u064B-\u0652]')
 
@@ -25,15 +25,14 @@ def split_text_and_diacritics(text):
 
 
 def post_process(test_results):
-    with open('/home/zizo/Documents/NLP/Project/utils/arabic_letters.pickle' , 'rb') as f:
-        arabic_letters = pickle.load(f)
 
     cleaned_test_results = []
+    arabic_letters = get_arabic_characters()
     for line in test_results:
         cleaned_text, labels = split_text_and_diacritics(line)
         new_text = ''
         for i in range(len(cleaned_text)):
-            if cleaned_text[i] in arabic_letters or cleaned_text[i] == ' ':
+            if cleaned_text[i] in arabic_letters or cleaned_text[i] == ' ': # TODO: ask omar
                 new_text += cleaned_text[i] + labels[i]
             
 
