@@ -12,6 +12,7 @@ char2idx_path = os.getenv('char2idx_path')
 idx2char_path = os.getenv('idx2char_path')
 diacritic2id_path = os.getenv('diacritic2id_path')
 arabic_letters_map = os.getenv('arabic_letters')
+unk_list_path = os.getenv('unk_list_path')
 
 def load_data_pickle(file_path):
     with open(file_path, 'rb') as f:
@@ -97,3 +98,8 @@ def get_arabic_characters():
     with open(arabic_letters_map, 'rb') as f:
         arabic_letters = pickle.load(f)
     return arabic_letters
+
+
+def save_list(unk_list):
+    with open(unk_list_path, 'w', encoding='utf-8') as f:
+        json.dump(unk_list, f, ensure_ascii=False)
