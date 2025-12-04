@@ -1,25 +1,17 @@
 import re
-import pickle
-from utils import save_list
+
 
 numeric_pattern = r"\(\s*\d+\s*/\s*\d+\s*\)"
 english = r"[a-zA-Z]"
-numbers = r"\d+"
+numbers = r"\s*\d+\s*"
 numering_items = r"\s*\d+\s*[-]\s*"
 empty_brackets = r'\(\s*\)|\[\s*\]|\{\s*\}|<<\s*>>|"\s*"|\'\s*\''
-stand_alone=r'(?<=\s|\^|\(|\[|\{)[^\(\)\[\]\{\}\.,،:;؛؟!\-](?=\s|$|\]|\)|\})'
-UNK_CHAR = '?'
 
-kawloho_pattern = r"(\s*قَوْلُهُ\s*)"
-qala_variations = r"(?:قَالَ|قَالَتْ|قُلْت|قَالُوا|قُلْنَا|أَقُولُ)"
-qala_variations = r"(?:قَالَ|قَالَتْ|قُلْت|قَالُوا|قُلْنَا|أَقُولُ)"
-qala_pattern = rf"(\s*{qala_variations}\s*:)"
+def clean_punctuation_sequence(text):
+    collapsible = re.escape(".,:;!?'\"/،؛؟")
+    pattern = rf"([{collapsible}])(?:\s*\1)+"
 
-punctuation = [' ', '،', ':', '؛', '!', '؟', '"', "'", '«', '»', '(', ')', '[', ']', '{', '}', '-', '.']
-DIACRITICS_PATTERN = re.compile(r'[\u064B-\u0652]')
-
-unk_list = []
-MAX_LEN = 807
+    return re.sub(pattern, r"\1", text)
 
 def remove_unbalanced_brackets(text):
     pair_map = {')': '(', '}': '{', ']': '[', '>':'<', '»': '«', '"':'"', "'":"'"}
@@ -47,192 +39,148 @@ def remove_unbalanced_brackets(text):
 
     return "".join([char for i, char in enumerate(text) if i not in indices_to_remove])
 
-def clean_punctuation_sequence(text):
-    collapsible = re.escape(".,:;!?'\"/،؛؟")    
-    pattern = rf"([{collapsible}])(?:\s*\1)+"
+
+def initial_process(line):
+    res = re.sub(numering_items, '', line)
+    res = re.sub(numeric_pattern, '', res)
+    res = re.sub(english, ' ', res)
+    res = re.sub(numbers, '', res)
+    res = re.sub(empty_brackets, '', res)
+    res = re.sub(',', '،', res)
+    res = re.sub(';', '؛', res)
+    res = re.sub(r'\?', '؟', res)
+    res = re.sub(r'/', '', res)
+    res = re.sub(r'\*', '', res)
+    res = re.sub(r'–', '-', res)
+    res = res.replace('\u200f', '')
     
-    return re.sub(pattern, r"\1", text)
+
+    res = clean_punctuation_sequence(res)
+
+    res = remove_unbalanced_brackets(res)
+
+    res = re.sub(r"\s+", " ", res).strip()
+
+    return res
 
 
-# def separate_citations(citation_pattern, lines):
-#     final_lines = []
-
-#     for line in lines:
-#         modified_line = re.sub(citation_pattern, r"\n\1", line)
-        
-#         parts = modified_line.split('\n')
-        
-#         for part in parts:
-#             cleaned_part = part.strip()
-#             if cleaned_part:
-#                 final_lines.append(cleaned_part)
-                
-#     return final_lines
-
-def split_citations(lines):
+def split_citations_raw(line):
     qal_list = [
-        "قَالَ","قَالَتْ","قَالُوا","قُلْت","قُلْنَا",
-        "أَقُولُ","يَقُولُ","يَقُولُونَ","قِيلَ","يُقَالُ"
+        "قال", "قالت", "قالوا", "قلت", "قلنا",
+        "أقول", "يقول", "يقولون", "قيل", "يقال"
     ]
-    
-    def add_tashkeel(word):
-        tashkeel = "[\u064B-\u065F]*"
-        return "".join([c + tashkeel for c in word])
-    
-    qal_regex = "|".join([add_tashkeel(w) for w in qal_list])
+
+    qal_regex = "|".join(qal_list)
 
     qal_with_colon = rf"(?:{qal_regex})\s*[:：]"
 
-    tashkeel = "[\u064B-\u065F]*"
-    qawloho_regex = rf"(?:وَ|فَ)?قَوْل{tashkeel}(?:ه{tashkeel}|هُ{tashkeel})?(?:\s*تَعَالَى)?"
+    
+    qawloho_regex = r"(?:و|ف)?قول(?:ه)?(?:\s*تعالى)?"
 
     trigger = rf"({qal_with_colon}|{qawloho_regex})"
 
     final_lines = []
-    for line in lines:
-        matches = list(re.finditer(trigger, line))
-        if not matches:
-            final_lines.append(line.strip())
-            continue
-        
+    matches = list(re.finditer(trigger, line))
+    
+    if not matches:
+        final_lines.append(line.strip())
+    else:
         last_idx = 0
         for m in matches:
             start = m.start()
-            if line[last_idx:start].strip():
-                final_lines.append(line[last_idx:start].strip())
+            if line[last_idx:start]:
+                final_lines.append(line[last_idx:start])
             last_idx = start
         
-        final_lines.append(line[last_idx:].strip())
-        
+        final_lines.append(line[last_idx:])
+
     return final_lines
 
-def process_and_capture(text):
-    xo_list = []
-    unk_list = []
-    INTAHA = r'\s+ا\s*هـ?\s+'
-
-    xo_list = [m.group(0) for m in re.finditer(INTAHA, text)]
-    text = re.sub(INTAHA, ' x ', text)
-
-    p_brackets = fr'\((\s*{stand_alone}\s*)+\)'
-    for m in re.finditer(p_brackets, text):
-        unk_list.append(m.group(0))
-    text = re.sub(p_brackets, f' {UNK_CHAR} ', text)
-
-    p_raw = fr'(\s*{stand_alone}\s*)+'
-    for m in re.finditer(p_raw, text):
-        unk_list.append(m.group(0))
-    text = re.sub(p_raw, f' {UNK_CHAR} ', text)
-    unk_list = [x for x in unk_list if x.strip() != '?']
-
-    return text, unk_list, xo_list
-
-def initial_process(lines):
-    new_lines = []
-    unk_list = []
-    xo_list = []
-    for line in lines:
-        res = re.sub(numering_items, '', line)
-        res = re.sub(numeric_pattern, '', res)
-        res = re.sub(english, ' ', res)
-        res = re.sub(numbers, '', res)
-        res = re.sub(empty_brackets, '', res)
-        res = re.sub(',', '،', res) 
-        res = re.sub(';', '؛', res) 
-        res = re.sub('?', '؟', res) 
-        res, unk_list_local, xo_list_local = process_and_capture(res)
-        res = re.sub(r'/', '', res) 
-        res = re.sub(r'\*', '', res) 
-        res = re.sub(r'–', '-', res) 
-        res = res.replace('\u200f', '') 
-        
-        res = clean_punctuation_sequence(res)
-        res = remove_unbalanced_brackets(res)
-        
-        res = re.sub(r"\s+", " ", res).strip()
-        new_lines.append(res)
-        
-        unk_list.extend(unk_list_local)
-        xo_list.extend(xo_list_local)
-
-    return new_lines, unk_list, xo_list
-
-
-def slide_window(text, overlap=50, max_len=200):
+def slide_window_raw(text, overlap=50, max_len=807):
     if len(text) <= max_len:
-        return [text], [0]
+        return [text], []
     
-    text_chunks = []
-    text_indices = []
+    chunks = []
+    overlaps = []
     
-    stride = max_len - overlap
-    j = 0
+    chunks.append(text[:max_len])
     
-    for i in range(0, len(text), stride):
-
-        t_chunk = text[i : i + max_len]
-        text_chunks.append(t_chunk)
-        text_indices.append(j)
-        j += 1
+    current_start = 0
+    text_len = len(text)
+    
+    while True:
+        ideal_stride = max_len - overlap
         
-        if i + max_len >= len(text): 
+        ideal_next_start = current_start + ideal_stride
+        
+        if ideal_next_start >= text_len:
+            break
+
+        found_next_start = -1
+        
+        search_limit = current_start  
+        
+        for i in range(ideal_next_start, search_limit, -1):
+            if i < text_len and text[i] == ' ':
+                found_next_start = i + 1 
+                break
+        
+        if found_next_start == -1:
+            found_next_start = ideal_next_start
+            
+        
+        actual_overlap = (current_start + max_len) - found_next_start
+        
+        if actual_overlap < 0:
+            actual_overlap = 0
+
+        next_chunk = text[found_next_start : found_next_start + max_len]
+        
+        chunks.append(next_chunk)
+        overlaps.append(actual_overlap)
+        
+        current_start = found_next_start
+        
+        if current_start + max_len >= text_len:
             break
             
-    return text_chunks , text_indices
+    return chunks, overlaps
 
-def split_text_and_diacritics(text):
-
-    letters = []
-    labels = []
+def prepare_for_predict():
+    all_text_chunks = []
+    all_recovery = []
+    all_overlaps = [] 
+    length = 0
+    assertions = []
     
-    i = 0
-    while i < len(text):
-        char = text[i]
+    with open('/home/zizo/Documents/NLP/Project/data/val.txt', "r", encoding="utf-8") as file:
         
-        if DIACRITICS_PATTERN.match(char):
-            if labels:
-                labels[-1] += char
-        else:
-            letters.append(char)
-            labels.append("") 
+        for line in file:
+            length += 1
+
+            # line, _ = split_text_and_diacritics(line) # only for Val not test
+            recovery = []
+            curr_chunks = []
+            curr_overlaps = [] 
             
-        i += 1
-        
-    return "".join(letters), labels
+            cleaned = initial_process(line.strip())
+            assertions.append(cleaned)
+            
+            raw_segments = split_citations_raw(cleaned)
 
+            for seg in raw_segments:
+                t_chunks, t_overlaps = slide_window_raw(seg, overlap=50, max_len=807)
+                
+                for i, chunk in enumerate(t_chunks):
+                    recovery.append(i)
+                    curr_chunks.append(chunk)
+                
+               
+                curr_overlaps.extend(t_overlaps)
 
-def process_text(lines_text):
-    new_lines, unk_list, xo_list = initial_process(lines_text)
-    save_list(unk_list)
-    save_list(xo_list)
-    
-    new_lines = split_citations(new_lines)
-    new_lines = [remove_unbalanced_brackets(line) for line in new_lines]
-    
-    cleaned_text = []
-
-    for line in new_lines:
-        line = re.sub(r'\s+', ' ', line).strip()
-        if not line.strip():
-            continue
-        
-        cleaned_text.append(line)
-
-    chunked_lines = []
-    chunked_indices = []
-
-    for new_line in cleaned_text:
-        chunks, indices = slide_window(new_line, overlap=50, max_len=MAX_LEN)
-        
-        for chunk in chunks:
-            chunked_lines.append(chunk)
-            chunked_indices.append(indices)
-
-    xo_indices = []
-    processed_lines = []
-    for line in chunked_lines:
-        xo_indices.append([m.start() for m in re.finditer(' x ', line)])
-        processed = re.sub(' x ', ' ، ', line)
-        processed_lines.append(processed)
-
-    return processed_lines, unk_list, xo_list, chunked_indices
+            all_recovery.append(recovery)
+            all_text_chunks.append(curr_chunks)
+            all_overlaps.append(curr_overlaps) 
+            
+    print(f"Generated {len(all_text_chunks)} chunks.")
+    return all_text_chunks, all_overlaps, all_recovery, length, assertions

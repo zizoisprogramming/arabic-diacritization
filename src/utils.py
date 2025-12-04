@@ -27,7 +27,7 @@ def load_data_pickle(file_path):
         X.append(x_ids)
         y.append(y_ids)
 
-    return np.array(X), np.array(y)
+    return X, y
 
 def get_diacritics_map():
     with open(diacritic2id_path, 'r', encoding='utf-8') as f:
@@ -43,31 +43,7 @@ def get_char_map():
     with open(idx2char_path, 'r', encoding='utf-8') as f:
         idx2char = json.load(f)
 
-    idx2char['1'] = '?'
-    value = char2idx.pop('\uFFFD')
-    char2idx['?'] = value
-
     return char2idx, idx2char
-
-
-def remove_pads(sentence, tashkeel):
-    chars = []
-    tashkeelat = []
-    for i in range(len(sentence)):
-        if sentence[i] != '<PAD>':
-            chars.append(sentence[i])
-            tashkeelat.append(tashkeel[i])
-    sentence_text = "".join(chars)
-    text = sentence_text.replace('\uFFFD', '?')
-    return text, tashkeelat
-
-def data_after_pad_rem(sentences, tashkeel_sequences):
-    new_sentences = [] 
-    new_tashkeel = [] 
-    for i in range(len(sentences)):
-        text, tashkeel = remove_pads(sentences[i], tashkeel_sequences[i])
-        new_sentences.append(text)
-        new_tashkeel.append(tashkeel)
 
 
 def get_tashkeel_sequence(new_tashkeel, index):
@@ -100,6 +76,6 @@ def get_arabic_characters():
     return arabic_letters
 
 
-def save_list(unk_list):
-    with open(unk_list_path, 'w', encoding='utf-8') as f:
-        json.dump(unk_list, f, ensure_ascii=False)
+def arabic_only(text):
+    ARABIC_CHARS = get_arabic_characters()
+    return "".join([char for char in text if char in ARABIC_CHARS or char == " "])

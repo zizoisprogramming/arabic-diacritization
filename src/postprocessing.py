@@ -1,5 +1,6 @@
 import re
 from utils import get_arabic_characters
+import itertools
 
 DIACRITICS_PATTERN = re.compile(r'[\u064B-\u0652]') 
 
@@ -24,60 +25,60 @@ def split_text_and_diacritics(text):
         
     return "".join(letters), labels
 
-def recover(result_lines, unk_list, xo_list, chunked_indices, xo_indices):
+def reconstruct_text_window(chunks, overlaps):
+    if not chunks:
+        return ""
     
-    unk_iter = iter(unk_list)
-    xo_iter = iter(xo_list)
+    reconstructed_parts = [chunks[0]]
     
-    recovered_lines = [] 
+    for chunk, ov in zip(chunks[1:], overlaps):
+        reconstructed_parts.append(chunk[ov:])
+        
+    return "".join(reconstructed_parts)
+
+
+def arabic_only_text_and_tashkeel(text, tashkeel):
+    ARABIC_CHARS = get_arabic_characters()
+    return "".join([char for char in text if char in ARABIC_CHARS or char == " "]), "".join([tashkeel[i] for i, char in enumerate(text) if char in ARABIC_CHARS or char == " "])
+
+def post_process(all_text_chunks, all_overlaps, all_recovery, all_predicted):
+    reconstructed = []
+    final_tashkeel = []
+    flat_tashkeel = list(itertools.chain.from_iterable(all_predicted))
+    idx = 0
     
-    for i, line in enumerate(result_lines):
-        
-        indices = xo_indices[i]
-        
-        current_xo_texts = [next(xo_iter) for _ in range(len(indices))]
-        
-       
-        repair_map = zip(reversed(indices), reversed(current_xo_texts))
-        
-        for idx, original_text in repair_map:
-            if line[idx:idx+3] == ' ، ': 
-                line = line[:idx] + original_text + line[idx+3:]
-        
-        def unk_replacer(match):
-            try:
-                return next(unk_iter)
-            except StopIteration:
-                return match.group(0)
-                
-        line = re.sub(r' \? ', unk_replacer, line)
-        
-        recovered_lines.append(line)
+    for i in range(len(all_recovery)):
+        res = ''
 
-    final_documents = []
-    
-    for group in chunked_indices:
-        merged_doc = ""
-        for chunk_idx in group:
-            merged_doc += recovered_lines[chunk_idx]
-        final_documents.append(merged_doc)
-
-    return final_documents
-
-
-def post_process(test_results, unk_list, xo_list, chunked_indices, xo_indices):
-
-    final_results = recover(test_results, unk_list, xo_list, chunked_indices, xo_indices)
-    cleaned_test_results = []
-    arabic_letters = get_arabic_characters()
-    for line in final_results:
-        cleaned_text, labels = split_text_and_diacritics(line)
-        new_text = ''
-        for i in range(len(cleaned_text)):
-            if cleaned_text[i] in arabic_letters or cleaned_text[i] == ' ': # TODO: ask omar
-                new_text += cleaned_text[i] + labels[i]
+        curr_chunks = []
+        curr_overlaps = []
+        
+        overlap_idx = 0 
+        
+        for j in range(len(all_recovery[i])):
+            recovery_id = all_recovery[i][j]
+            chunk = all_text_chunks[i][j]
             
+            if recovery_id == 0:
+                if curr_chunks:
+                    res += reconstruct_text_window(curr_chunks, curr_overlaps)
+                
+                curr_chunks = [chunk]
+                curr_overlaps = [] 
+            
+            else:
+                curr_chunks.append(chunk)
+                
+                if overlap_idx < len(all_overlaps[i]):
+                    curr_overlaps.append(all_overlaps[i][overlap_idx])
+                    overlap_idx += 1
 
-        cleaned_test_results.append(new_text)
-
-    return cleaned_test_results
+        if curr_chunks:
+            res += reconstruct_text_window(curr_chunks, curr_overlaps)
+        
+        res, tashkeel = arabic_only_text_and_tashkeel(res, flat_tashkeel[idx:idx+len(res)])
+        reconstructed.append(res)
+        final_tashkeel.append(tashkeel)
+        idx += len(res)
+        
+    return reconstructed, final_tashkeel
