@@ -1,4 +1,3 @@
-# arabic-diacritization
 Arabic Text Diacritization using Deep BiLSTM & Transformers
 📌 Project Overview
 
@@ -76,6 +75,7 @@ The training process was optimized for convergence and handling class imbalance:
 📊 Results
 
 AraElectra (Final Model) Final Accuracy: AraBERT (Experimental) Final Accuracy:
+References
 <p>https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9274427</p>
 <img width="432" height="363" alt="image" src="https://github.com/user-attachments/assets/e7ee0999-378b-454e-b98a-d045ef08cf12" />
 <p>https://aclanthology.org/2021.findings-emnlp.317.pdf</p>
